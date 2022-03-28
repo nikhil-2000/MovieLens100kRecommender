@@ -9,9 +9,8 @@ from torch.utils.data import DataLoader
 from torch.utils.tensorboard import SummaryWriter
 from tqdm import tqdm
 
-from Objects.NeuralNetworkModel import EmbeddingNetwork
-from Objects.TriplesGenerator import TriplesGenerator
-from Old import triplesLoader as tl
+from Objects.Models.NeuralNetworkModel import EmbeddingNetwork
+from Objects.Datasets.TriplesGenerator import TriplesGenerator
 import numpy as np
 import sys
 

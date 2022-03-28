@@ -1,15 +1,15 @@
 from torch.utils.data import DataLoader
 from torch.utils.tensorboard import SummaryWriter
 
+from Objects.Datasets.ScoreFolder import ScoreFolder
 from Training_Testing.train_NN import EmbeddingNetwork
 import torch
-from Old import triplesLoader as tl
 
 model = EmbeddingNetwork()
-checkpoint = torch.load("../normal_nn_Mar23_19-08-49.pth")
+checkpoint = torch.load("../Models/normal_nn_100_Mar28_14-53-57.pth")
 model.load_state_dict(checkpoint['model_state_dict'])
 
-score_ds = tl.ScoreFolder("../ml-100k/ua.base")
+score_ds = ScoreFolder("../ml-100k/ua.base")
 score_loader = DataLoader(score_ds, batch_size=1, shuffle=False, num_workers=1)
 
 results = []

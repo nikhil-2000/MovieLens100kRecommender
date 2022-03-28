@@ -3,8 +3,8 @@ from torch.utils.data import DataLoader
 from tqdm import tqdm
 import numpy as np
 
-from Objects.NeuralNetworkModel import EmbeddingNetwork
-from Objects.ScoreFolder import ScoreFolder
+from Objects.Models.NeuralNetworkModel import EmbeddingNetwork
+from Objects.Datasets.ScoreFolder import ScoreFolder
 
 
 class CalcEmbeddings:

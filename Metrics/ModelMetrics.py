@@ -5,7 +5,7 @@ import pandas as pd
 
 from tqdm import trange
 
-from Metrics.CollabFilteringMetrics import CollabFilteringMetrics
+from Metrics.URWMetrics import CollabFilteringMetrics
 from Metrics.NormallNNMetrics import NormalNNMetrics
 from Metrics.RandomMetrics import RandomChoiceMetrics
 
@@ -29,7 +29,7 @@ def run_metrics(filename, model, samples = 1000, tests = 1000, size = 0):
     same_count = 0
 
     # model_names = ["Random Walk", "Same Skill", "Random Choice", "Collab Filtering"]
-    model_names = ["Collab Filtering", "Neural Network", "Random"]
+    model_names = ["URW", "Neural Network", "Random"]
     print("\nTests Begin")
     for i in trange(tests):
         # Pick Random User
@@ -82,7 +82,7 @@ def run_metrics(filename, model, samples = 1000, tests = 1000, size = 0):
 if __name__ == '__main__':
 
 
-    run_metrics("../ml-100k/ua.base", "../normal_nn_50_Mar23_19-22-16.pth", samples = 1000, tests = 5000, size = 0)
-    run_metrics("../ml-100k/ua.test", "../normal_nn_50_Mar23_19-22-16.pth", samples = 1000, tests = 5000, size = 0)
+    run_metrics("../ml-100k/ua.base", "../Models/normal_nn_20_Mar28_16-57-53.pth", samples = 1000, tests = 1000, size = 0)
+    run_metrics("../ml-100k/ua.test", "../Models/normal_nn_20_Mar28_16-57-53.pth", samples = 1000, tests = 1000, size = 0)
     # run_metrics("../non_skill_builder_data_new.csv", "questions_dataset_Mar10_16-48-43.pth", samples = 500, tests = 1000, size = 0000)
 

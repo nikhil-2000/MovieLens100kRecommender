@@ -133,3 +133,5 @@ dmypy.json
 Models/
 ml-100k/
 runs/
+
+*.pyc
