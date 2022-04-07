@@ -8,12 +8,14 @@ from helper_funcs import categories
 
 class UnweightedRandomWalk:
 
-    def __init__(self, dataset : TrainDataset):
+    def __init__(self, dataset : TrainDataset, closest = 20):
 
         self.dataset = dataset
         self.users = self.create_users()
         self.vectors, self.id_to_idx = self.get_user_scores()
         self.dists = pairwise_distances(self.vectors.transpose())
+
+        self.closest = closest
 
     def create_users(self):
         ratings = self.dataset.interaction_df
@@ -59,7 +61,7 @@ class UnweightedRandomWalk:
         dists_from_users = self.dists[:, idx]
         dists_from_users = dists_from_users[dists_from_users > 0]
         sorted_indexes = np.argsort(dists_from_users)
-        closest_10_percent = max(len(sorted_indexes) // 10, 10)
+        closest_10_percent = max(len(sorted_indexes) // self.closest, 10)
         best_idxs = sorted_indexes[:closest_10_percent]
         closest_users_dists = dists_from_users[best_idxs]
         closest_users = [self.users[i] for i in best_idxs]

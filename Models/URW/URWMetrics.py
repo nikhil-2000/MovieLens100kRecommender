@@ -2,7 +2,9 @@ import random
 import time
 
 import numpy as np
+from prettytable import PrettyTable
 from torch.utils.data import DataLoader
+from tqdm import trange
 
 from Datasets.Testing import TestDataset
 from Datasets.Training import TrainDataset
@@ -57,7 +59,6 @@ class URW_Metrics:
         user_id = anchor.user_id.item()
         distances, users = self.model.get_closest_users(user_id)
 
-
         movies_to_choose = convert_distances(distances, search_size)
         movies_to_choose = movies_to_choose.astype(int)
 
@@ -88,7 +89,6 @@ class URW_Metrics:
         user_id = anchor.user_id.item()
         distances, users = self.model.get_closest_users(user_id)
 
-
         # t_1 = time.time()
 
         weights = convert_distances(distances, 100) / 100
@@ -118,7 +118,6 @@ class URW_Metrics:
         return [h[0] for h in highest]
 
 
-
 def convert_distances(distances, search_size):
     x = 1 / distances
     x = x / x.sum(axis=0)
@@ -129,25 +128,91 @@ def convert_distances(distances, search_size):
     return x
 
 
+def test_model(urw = None):
+    train_reader = Datareader("ua.base", size=000, training_frac=1)
+    test_reader = Datareader("ua.test", size=000, training_frac=1)
+    all_reader = Datareader("u.data", size=000, training_frac=1)
+    train_data = TrainDataset(train_reader.ratings_df, train_reader.user_df, train_reader.items_df)
+
+    if urw == None:
+        urw = UnweightedRandomWalk(train_data)
+
+    metric = URW_Metrics(train_data, urw)
+
+    metrics = []
+    datasets = []
+    metrics.append(metric)
+    datasets.append(train_data)
+
+    for reader in [train_reader, test_reader, all_reader]:
+        data = TestDataset(reader.ratings_df, reader.user_df, reader.items_df)
+        metric = URW_Metrics(data, urw)
+        metrics.append(metric)
+        datasets.append(data)
+
+    model_names = ["Train", "Test", "All"]
+
+    params = zip(metrics, datasets, model_names)
+
+    search_size = 100
+    tests = 1000
+    samples = 1000
+    output = PrettyTable()
+    output.field_names = ["Data", "Mean Rank"]
+
+    ranks = []
+
+    for metric, data, name in params:
+
+        print("\nTesting " + name)
+        for i in trange(tests):
+            # for i in range(tests):
+            # Pick Random User
+            total_interactions = 0
+            while total_interactions < 5:
+                user = metric.sample_user()
+                user_interactions, total_interactions = user.ratings, len(user.ratings)
+            # Generate Anchor Positive
+            a_idx, p_idx = random.sample(range(0, total_interactions), 2)
+            anchor = user_interactions.iloc[a_idx]
+
+            positive = user_interactions.iloc[p_idx]
+            positive_id = positive.movie_id.item()
+
+            without_positive = data.item_ids[~data.item_ids.isin(user_interactions.movie_id.unique())]
+            random_ids = np.random.choice(without_positive, samples).tolist()
+            all_ids = random_ids + [positive_id]
+            random.shuffle(all_ids)
+
+            ranking = metric.rank_questions(all_ids, anchor)
+
+            rank = ranking.index(positive_id)
+
+            metric.ranks.append(rank)
+
+        mr = metric.mean_rank()
+        output.add_row([name, mr])
+        ranks.append(mr)
+        print(output)
+
+    return output, ranks
+
+
 if __name__ == '__main__':
-    datareader = Datareader("ua.base", size=0)
-    train = TrainDataset(datareader.train, datareader.user_df, datareader.items_df)
-    test = TestDataset(datareader.test, datareader.user_df, datareader.items_df)
+    train_reader = Datareader("ua.base", size=000, training_frac=1)
 
-    train_loader = DataLoader(train)
-    test_loader = DataLoader(test)
+    train_data = TrainDataset(train_reader.ratings_df, train_reader.user_df, train_reader.items_df)
 
-    urw = UnweightedRandomWalk(train)
+    c = [10, 20, 40, 50, 100]
+    c.reverse()
+    output = PrettyTable()
+    output.field_names = ["Data", "Train", "Test","All"]
 
-    train_metrics = URW_Metrics(train,urw)
-    test_metrics = URW_Metrics(test,urw)
+    models = []
+    for n in c:
+        urw = UnweightedRandomWalk(train_data, n)
 
+        out, ranks = test_model(urw)
+        output.add_row([urw.closest] + [str(r) for r in ranks])
 
-    anchor = datareader.ratings_df.sample(1)
-    random_ids = datareader.movie_ids.sample(100)
-    t1 = train_metrics.top_n_questions(anchor, 100), train_metrics.rank_questions(random_ids, anchor)
-    t2 = test_metrics.top_n_questions(anchor, 100), test_metrics.rank_questions(random_ids, anchor)
-
-
-    print(t1)
-    print(t2)
+        print(output)

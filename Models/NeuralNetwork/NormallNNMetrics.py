@@ -96,36 +96,22 @@ class User:
 
 
 def test_model(model_file):
-    train_reader = Datareader("ua.base", size=0, training_frac=1)
+    train_reader = Datareader("ua.base", size=0, training_frac=1, val_frac=0.2)
     test_reader = Datareader("ua.test", size=0, training_frac=1)
-    all_reader = Datareader("u.data", size=0, training_frac=1)
 
     metrics = []
     datasets = []
     dataloaders = []
 
-    for reader in [train_reader, test_reader, all_reader]:
-        data = TestDataset(reader.ratings_df, reader.user_df, reader.items_df)
+    for df in [train_reader.train, train_reader.validation, test_reader.train]:
+        data = TestDataset(df,  train_reader.user_df, train_reader.items_df)
         loader = DataLoader(data, batch_size=64)
         metric = NormalNNMetrics(loader, model_file, data)
         metrics.append(metric)
         datasets.append(data)
         dataloaders.append(loader)
 
-    # train = TestDataset(train_reader.ratings_df, train_reader.user_df, train_reader.items_df)
-    # test = TestDataset(test_reader.ratings_df, test_reader.user_df, test_reader.items_df)
-    # all = TestDataset(all_reader.ratings_df, all_reader.user_df, all_reader.items_df)
-    #
-    # train_loader = DataLoader(train, batch_size=64)
-    # test_loader = DataLoader(test, batch_size=64)
-    # all_loader = DataLoader(all, batch_size=64)
-    #
-    # train_metrics = NormalNNMetrics(train_loader, model_file, train)
-    # test_metrics = NormalNNMetrics(test_loader, model_file, test)
-    # all_metrics = NormalNNMetrics(all_loader, model_file, all)
-
-
-    model_names = ["Train", "Test", "All"]
+    model_names = ["Train", "Test", "Val"]
 
     params = zip(metrics, datasets, dataloaders, model_names)
 
@@ -136,6 +122,7 @@ def test_model(model_file):
     output.field_names = ["Data", "Hitrate", "Mean Rank"]
 
     ranks = []
+    hitrates = []
     for metric, data, loader, name in params:
 
         print("\nTesting " + name)
@@ -164,7 +151,7 @@ def test_model(model_file):
             ranking = metric.rank_questions(all_ids, anchor)
 
             set_prediction = set(top_n)
-            if positive_id in set_prediction:
+            if any([pos in set_prediction for pos in user_rating.movie_id]):
                 metric.hits += 1
 
             rank = ranking.index(positive_id)
@@ -175,21 +162,43 @@ def test_model(model_file):
         mr = metric.mean_rank()
         output.add_row([name, hr, mr])
         ranks.append(mr)
+        hitrates.append(hr)
 
-    return output  , ranks
+    return output, ranks, hitrates
+
+def testWeightsFolder():
+    tables = []
+    model_files = []
+    rank_table = PrettyTable()
+    rank_table.field_names = ["Model", "Train", "Val", "Test"]
+
+    hr_table = PrettyTable()
+    hr_table.field_names = ["Model", "Train", "Val", "Test"]
+
+    for model_file in tqdm(os.listdir("WeightFiles")):
+        t, ranks, hitrates = test_model("WeightFiles/" + model_file)
+        model_files.append(model_file)
+        rank_table.add_row([model_file] + [str(r) for r in ranks])
+        hr_table.add_row([model_file] + [str(h) for h in hitrates])
+
+        print(rank_table)
+        print(hr_table)
 
 if __name__ == '__main__':
-    model_file = "train_100_64_0.05_Mar29_10-43-53.pth"
 
     tables = []
     model_files = []
-    table = PrettyTable()
-    table.field_names = ["Model", "Train", "Test", "All"]
+    rank_table = PrettyTable()
+    rank_table.field_names = ["Model", "Train", "Val", "Test"]
+
+    hr_table = PrettyTable()
+    hr_table.field_names = ["Model", "Train", "Val", "Test"]
 
     for model_file in tqdm(os.listdir("WeightFiles")):
-        t, ranks = test_model("WeightFiles/" + model_file)
+        t, ranks, hitrates = test_model("WeightFiles/" + model_file)
         model_files.append(model_file)
-        tables.append(t)
-        table.add_row([model_file] + [str(r) for r in ranks])
+        rank_table.add_row([model_file] + [str(r) for r in ranks])
+        hr_table.add_row([model_file] + [str(h) for h in hitrates])
 
-    print(table)
+        print(rank_table)
+        print(hr_table)
