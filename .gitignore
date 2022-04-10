@@ -139,3 +139,7 @@ ModelFiles
 dgl-itemrec-master/
 
 data/
+
+dgl-examples-pytorch-pinsage/
+
+dgl-examples-pytorch-pinsage.zip

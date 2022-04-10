@@ -29,10 +29,11 @@ class GCNDataset(DGLDataset):
 
     def __init__(self, dataset):
         self.dataset = dataset
+        self.dataset.reduce_users_films()
         super(GCNDataset, self).__init__(name = "MovieLens")
     def process(self):
         # G = nx.DiGraph()
-        # self.users = self.create_users()
+        self.users = self.create_users()
         # user_dict, items_dict = self.build_dicts()
         # user_node_data = list(user_dict.items())
         # item_node_data = list(items_dict.items())
@@ -42,23 +43,33 @@ class GCNDataset(DGLDataset):
 
         user_ids = []
         movie_ids = []
+        ratings = []
 
         u_to_graph_id = {user_id : i for i, user_id in enumerate(self.dataset.interaction_df.user_id.unique())}
         m_to_graph_id = {movie_id : i for i, movie_id in enumerate(self.dataset.interaction_df.movie_id.unique())}
         for i, row in self.dataset.interaction_df.iterrows():
             user = row.user_id.item()
             item = row.movie_id.item()
+            rating = row.rating.item()
+            ratings += [rating]
             user_ids.append(u_to_graph_id[user])
             movie_ids.append(m_to_graph_id[item])
 
 
-        print("users: ", len(user_ids))
-        print("movies: ", len(movie_ids))
+        self.graph_user_ids = list(u_to_graph_id.values())
+        self.graph_movie_ids = list(m_to_graph_id.values())
 
         self.graph = dgl.heterograph({
-            ("user","rating","movie"): (torch.Tensor(user_ids), torch.Tensor(movie_ids)),
-            ("movie", "rev_rating", "user"): (torch.Tensor(movie_ids), torch.Tensor(user_ids))
+            ("user","rating","movie"): (user_ids, movie_ids)
+            ,("movie", "rated_by", "user"): (movie_ids, user_ids)
         })
+
+        self.graph.nodes["user"].data["x"] = self.user_vectors()
+        self.graph.nodes["movie"].data["x"] = self.movie_vectors()
+        self.graph.edges[("user", "rating", "movie")].data["x"] = torch.Tensor(ratings)
+        self.graph.edges[("movie", "rated_by", "user")].data["x"] = torch.Tensor(ratings)
+
+        print(self.graph)
 
 
     def __getitem__(self, i):
@@ -74,23 +85,6 @@ class GCNDataset(DGLDataset):
         vs = [self.dataset[i][0] for i,_ in enumerate(self.dataset.item_ids)]
         vs = torch.stack(vs)
         return torch.Tensor(vs).float()
-
-    def edge_rating_indexes(self):
-        G = self.graph
-        list_nodes = list(G.nodes)
-
-        user_ids = {n: list_nodes.index(n) for n in G.nodes if "u_" in n}
-        movie_ids = {n: list_nodes.index(n) for n in G.nodes if "i_" in n}
-        edges = np.zeros((2, len(self.graph.edges)))
-        ratings = np.zeros((1, len(G.edges)))
-
-        for i, (u, v) in enumerate(self.graph.edges):
-            u_idx, v_idx = user_ids[u], movie_ids[v]
-            edges[:, i] = np.array([u_idx,v_idx])
-            r = G.edges[(u,v)]["rating"]
-            ratings[:, i] = np.array([r])
-
-        return torch.from_numpy(edges).type(torch.LongTensor), torch.from_numpy(ratings).float()
 
 
     def __len__(self):

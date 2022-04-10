@@ -1,20 +1,23 @@
 import torch
 from torch_geometric.nn import to_hetero, SAGEConv
+import torch.nn as nn
+import Models.GCN.layers as layers
 
-
-class GNN(torch.nn.Module):
-    def __init__(self, hidden_channels, out_channels):
+class PinSAGEModel(nn.Module):
+    def __init__(self, full_graph, ntype, textsets, hidden_dims, n_layers):
         super().__init__()
-        self.conv1 = SAGEConv((-1, -1), hidden_channels)
-        self.conv2 = SAGEConv((-1, -1), out_channels)
 
-    def forward(self, x, edge_index):
-        x = self.conv1(x, edge_index).relu()
-        x = self.conv2(x, edge_index)
-        return x
+        self.proj = layers.LinearProjector(full_graph, ntype, textsets, hidden_dims)
+        self.sage = layers.SAGENet(hidden_dims, n_layers)
+        self.scorer = layers.ItemToItemScorer(full_graph, ntype)
 
+    def forward(self, pos_graph, neg_graph, blocks):
+        h_item = self.get_repr(blocks)
+        pos_score = self.scorer(pos_graph, h_item)
+        neg_score = self.scorer(neg_graph, h_item)
+        return (neg_score - pos_score + 1).clamp(min=0)
 
-def get_model(data):
-    model = GNN(hidden_channels=64, out_channels=300)
-    model = to_hetero(model, data.metadata(), aggr='sum')
-    return model
+    def get_repr(self, blocks):
+        h_item = self.proj(blocks[0].srcdata)
+        h_item_dst = self.proj(blocks[-1].dstdata)
+        return h_item_dst + self.sage(blocks, h_item)

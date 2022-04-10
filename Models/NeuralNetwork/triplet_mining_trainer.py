@@ -106,6 +106,13 @@ def learn(argv):
     steps = 0
     for epoch in tqdm(range(numepochs), desc="Epochs"):
         # Split data into "Batches" and calc distances
+        percent = epoch / numepochs
+        if percent < 0.10:
+            miner = easy
+        elif 0.10 <= percent <= 0.30:
+            miner = semi_hard
+        else:
+            miner = hard
 
         epoch_losses = []
         model.train()
@@ -116,15 +123,9 @@ def learn(argv):
             embeddings = model(features)
             # Clears space on GPU I think
             del features
-
+            pairs = miner(embeddings, labels)
             # Triplet Loss !!! + Backprop
-            percent = epoch / numepochs
-            if  percent < 0.10:
-                pairs = easy(embeddings, labels)
-            elif 0.10 <= percent <= 0.30:
-                pairs = semi_hard(embeddings, labels)
-            else:
-                pairs = hard(embeddings, labels)
+
 
             loss = loss_func(embeddings, labels, pairs)
             loss.backward()
@@ -156,13 +157,7 @@ def learn(argv):
                 del features
 
                 # Triplet Loss !!! + Backprop
-                percent = epoch / numepochs
-                if percent < 0.10:
-                    pairs = easy(embeddings, labels)
-                elif 0.10 <= percent <= 0.30:
-                    pairs = semi_hard(embeddings, labels)
-                else:
-                    pairs = hard(embeddings, labels)
+                pairs = miner(embeddings, labels)
 
                 loss = loss_func(embeddings, labels, pairs)
 

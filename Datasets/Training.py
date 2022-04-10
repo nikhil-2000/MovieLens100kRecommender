@@ -34,6 +34,16 @@ class TrainDataset:
         is_one_idx = [i for i, c in enumerate(cats) if c == 1]
         return random.choice(is_one_idx)
 
+    def reduce_users_films(self):
+        u_ids = self.interaction_df.user_id.unique()
+        i_ids = self.interaction_df.movie_id.unique()
+        users = self.user_df.loc[self.user_df.index.isin(u_ids)]
+        items = self.item_df.loc[self.item_df.index.isin(i_ids)]
+
+        self.user_df = users
+        self.item_df = items
+        self.item_ids = self.item_df.index.to_series()
+
 
 if __name__ == '__main__':
 

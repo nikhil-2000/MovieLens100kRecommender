@@ -193,6 +193,7 @@ if __name__ == '__main__':
 
     hr_table = PrettyTable()
     hr_table.field_names = ["Model", "Train", "Val", "Test"]
+    hr_table.field_names = ["Model", "Train", "Val", "Test"]
 
     for model_file in tqdm(os.listdir("WeightFiles")):
         t, ranks, hitrates = test_model("WeightFiles/" + model_file)
