@@ -58,16 +58,17 @@ class GCNDataset(DGLDataset):
 
         self.graph_user_ids = list(u_to_graph_id.values())
         self.graph_movie_ids = list(m_to_graph_id.values())
+        self.graph_id_to_movie = {v : k for k,v in m_to_graph_id.items()}
 
         self.graph = dgl.heterograph({
             ("user","rating","movie"): (user_ids, movie_ids)
             ,("movie", "rated_by", "user"): (movie_ids, user_ids)
         })
 
-        self.graph.nodes["user"].data["x"] = self.user_vectors()
-        self.graph.nodes["movie"].data["x"] = self.movie_vectors()
-        self.graph.edges[("user", "rating", "movie")].data["x"] = torch.Tensor(ratings)
-        self.graph.edges[("movie", "rated_by", "user")].data["x"] = torch.Tensor(ratings)
+        self.graph.nodes["user"].data["feat"] = self.user_vectors()
+        self.graph.nodes["movie"].data["feat"], self.graph.nodes["movie"].data["label"] = self.movie_vectors()
+        self.graph.edges[("user", "rating", "movie")].data["feat"] = torch.Tensor(ratings)
+        self.graph.edges[("movie", "rated_by", "user")].data["feat"] = torch.Tensor(ratings)
 
         print(self.graph)
 
@@ -82,9 +83,16 @@ class GCNDataset(DGLDataset):
 
 
     def movie_vectors(self):
-        vs = [self.dataset[i][0] for i,_ in enumerate(self.dataset.item_ids)]
+        vs = []
+        labels = []
+        for i, lbl in enumerate(self.dataset.item_ids):
+            v , lbl = self.dataset[i]
+            vs.append(v)
+            labels.append(lbl)
+
         vs = torch.stack(vs)
-        return torch.Tensor(vs).float()
+        labels = torch.Tensor(labels)
+        return vs.float(), labels.long()
 
 
     def __len__(self):

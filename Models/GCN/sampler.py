@@ -126,9 +126,9 @@ def assign_features_to_blocks(blocks, g, textset, ntype):
     # For the first block (which is closest to the input), copy the features from
     # the original graph as well as the texts.
     assign_simple_node_features(blocks[0].srcdata, g, ntype)
-    assign_textual_node_features(blocks[0].srcdata, textset, ntype)
+    # assign_textual_node_features(blocks[0].srcdata, textset, ntype)
     assign_simple_node_features(blocks[-1].dstdata, g, ntype)
-    assign_textual_node_features(blocks[-1].dstdata, textset, ntype)
+    # assign_textual_node_features(blocks[-1].dstdata, textset, ntype)
 
 class PinSAGECollator(object):
     def __init__(self, sampler, g, ntype, textset):

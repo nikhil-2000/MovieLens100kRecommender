@@ -1,13 +1,13 @@
-import torch
-from torch_geometric.nn import to_hetero, SAGEConv
 import torch.nn as nn
+
 import Models.GCN.layers as layers
 
+
 class PinSAGEModel(nn.Module):
-    def __init__(self, full_graph, ntype, textsets, hidden_dims, n_layers):
+    def __init__(self, full_graph, ntype, hidden_dims, n_layers):
         super().__init__()
 
-        self.proj = layers.LinearProjector(full_graph, ntype, textsets, hidden_dims)
+        self.proj = layers.LinearProjector(full_graph, ntype, hidden_dims)
         self.sage = layers.SAGENet(hidden_dims, n_layers)
         self.scorer = layers.ItemToItemScorer(full_graph, ntype)
 

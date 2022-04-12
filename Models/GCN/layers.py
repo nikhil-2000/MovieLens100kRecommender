@@ -1,15 +1,15 @@
+import dgl
+import dgl.function as fn
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-import dgl
-import dgl.nn.pytorch as dglnn
-import dgl.function as fn
+
 
 def disable_grad(module):
     for param in module.parameters():
         param.requires_grad = False
 
-def _init_input_modules(g, ntype, textset, hidden_dims):
+def _init_input_modules(g, ntype, hidden_dims):
     # We initialize the linear projections of each input feature ``x`` as
     # follows:
     # * If ``x`` is a scalar integral feature, we assume that ``x`` is a categorical
@@ -35,75 +35,31 @@ def _init_input_modules(g, ntype, textset, hidden_dims):
             nn.init.xavier_uniform_(m.weight)
             module_dict[column] = m
 
-    if textset is not None:
-        for column, field in textset.fields.items():
-            if field.vocab.vectors:
-                module_dict[column] = BagOfWordsPretrained(field, hidden_dims)
-            else:
-                module_dict[column] = BagOfWords(field, hidden_dims)
-
     return module_dict
 
-class BagOfWordsPretrained(nn.Module):
-    def __init__(self, field, hidden_dims):
-        super().__init__()
 
-        input_dims = field.vocab.vectors.shape[1]
-        self.emb = nn.Embedding(
-            len(field.vocab.itos), input_dims,
-            padding_idx=field.vocab.stoi[field.pad_token])
-        self.emb.weight[:] = field.vocab.vectors
-        self.proj = nn.Linear(input_dims, hidden_dims)
-        nn.init.xavier_uniform_(self.proj.weight)
-        nn.init.constant_(self.proj.bias, 0)
-
-        disable_grad(self.emb)
-
-    def forward(self, x, length):
-        """
-        x: (batch_size, max_length) LongTensor
-        length: (batch_size,) LongTensor
-        """
-        x = self.emb(x).sum(1) / length.unsqueeze(1).float()
-        return self.proj(x)
-
-class BagOfWords(nn.Module):
-    def __init__(self, field, hidden_dims):
-        super().__init__()
-
-        self.emb = nn.Embedding(
-            len(field.vocab.itos), hidden_dims,
-            padding_idx=field.vocab.stoi[field.pad_token])
-        nn.init.xavier_uniform_(self.emb.weight)
-
-    def forward(self, x, length):
-        return self.emb(x).sum(1) / length.unsqueeze(1).float()
 
 class LinearProjector(nn.Module):
     """
     Projects each input feature of the graph linearly and sums them up
     """
-    def __init__(self, full_graph, ntype, textset, hidden_dims):
+    def __init__(self, full_graph, ntype, hidden_dims):
         super().__init__()
 
         self.ntype = ntype
-        self.inputs = _init_input_modules(full_graph, ntype, textset, hidden_dims)
+        self.inputs = _init_input_modules(full_graph, ntype, hidden_dims)
 
     def forward(self, ndata):
         projections = []
         for feature, data in ndata.items():
-            if feature == dgl.NID or feature.endswith('__len'):
+            if feature == dgl.NID or feature.endswith('__len') or "label" in feature:
                 # This is an additional feature indicating the length of the ``feature``
                 # column; we shouldn't process this.
                 continue
 
             module = self.inputs[feature]
-            if isinstance(module, (BagOfWords, BagOfWordsPretrained)):
-                # Textual feature; find the length and pass it to the textual module.
-                length = ndata[feature + '__len']
-                result = module(data, length)
-            else:
-                result = module(data)
+
+            result = module(data)
             projections.append(result)
 
         return torch.stack(projections, 1).sum(1)
@@ -133,7 +89,9 @@ class WeightedSAGEConv(nn.Module):
         """
         h_src, h_dst = h
         with g.local_scope():
-            g.srcdata['n'] = self.act(self.Q(self.dropout(h_src)))
+            x = self.dropout(h_src)
+            x = self.Q(x)
+            g.srcdata['n'] = self.act(x)
             g.edata['w'] = weights.float()
             g.update_all(fn.u_mul_e('n', 'w', 'm'), fn.sum('m', 'n'))
             g.update_all(fn.copy_e('w', 'm'), fn.sum('m', 'ws'))
