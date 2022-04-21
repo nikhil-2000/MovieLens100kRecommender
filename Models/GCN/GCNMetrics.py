@@ -76,10 +76,10 @@ import random
 
 class GraphMetrics:
 
-    def __init__(self, dataset):
-        self.embeddings = pd.read_csv("runs/Embeddings_training_GCN12-Apr_1232/00000/default/tensors.tsv", sep='\t',
+    def __init__(self, dataset, embedding_path):
+        self.embeddings = pd.read_csv(embedding_path + "/00000/default/tensors.tsv", sep='\t',
                               header=None).to_numpy()
-        self.metadata = pd.read_csv("runs/Embeddings_training_GCN12-Apr_1232/00000/default/metadata.tsv", sep='\t', header=0)
+        self.metadata = pd.read_csv(embedding_path + "/00000/default/metadata.tsv", sep='\t', header=0)
         self.dataset = dataset
 
         self.e_dict = {row.id: self.embeddings[i] for i, row in self.metadata.iterrows()}
@@ -142,6 +142,23 @@ class GraphMetrics:
     def mean_rank(self):
         return sum(self.ranks) / len(self.ranks)
 
+    def average_distances(self, anchor_id, positive_ids, negative_ids):
+
+        anchor = self.e_dict[anchor_id]
+
+        positives = [self.e_dict[k] for k in positive_ids]
+        positives = np.array(positives).squeeze()
+
+
+        negatives = [self.e_dict[k] for k in negative_ids]
+        negatives = np.array(negatives).squeeze()
+
+        pos_dists = np.linalg.norm(positives - anchor, axis=1)
+        neg_dists = np.linalg.norm(negatives - anchor, axis=1)
+
+
+        return np.mean(pos_dists), np.mean(neg_dists)
+
 
 class User:
 
@@ -157,9 +174,8 @@ class User:
         self.has_watched.set_index("movie_id", inplace=True)
 
 
-def test_model():
-    train_reader = Datareader("ua.base", size=0, training_frac=1, val_frac=0.2)
-    test_reader = Datareader("ua.test", size=0, training_frac=1)
+def test_model(embedding_path, datareader):
+    train_reader = datareader
 
     metrics = []
     datasets = []
@@ -168,7 +184,7 @@ def test_model():
     # for df in [train_reader.train, train_reader.validation, test_reader.train]:
     data = TestDataset(train_reader.ratings_df,  train_reader.user_df, train_reader.items_df)
     loader = DataLoader(data, batch_size=64)
-    metric = GraphMetrics(data)
+    metric = GraphMetrics(data, embedding_path)
     metrics.append(metric)
     datasets.append(data)
     dataloaders.append(loader)
@@ -178,13 +194,14 @@ def test_model():
     params = zip(metrics, datasets, dataloaders, model_names)
 
     search_size = 30
-    tests = 10000
+    tests = 1000
     samples = 1000
     output = PrettyTable()
-    output.field_names = ["Data", "Hitrate", "Mean Rank"]
+    output.field_names = ["Data", "Hitrate", "Mean Rank","Avg Pos Distance", "Avg Neg Distance"]
 
     ranks = []
     hitrates = []
+    pos_dists, neg_dists = [], []
     for metric, data, loader, name in params:
 
         print("\nTesting " + name)
@@ -212,6 +229,9 @@ def test_model():
             top_n = metric.top_n_questions(anchor, search_size)
             ranking = metric.rank_questions(all_ids, anchor)
 
+            positive_ids = metric.metadata.id[metric.metadata.id.isin(user_rating.movie_id.unique())].tolist()
+            pos_distance, neg_distance = metric.average_distances(anchor_id, positive_ids, random_ids)
+
             set_prediction = set(top_n)
             if any([pos in set_prediction for pos in user_rating.movie_id]):
                 metric.hits += 1
@@ -219,14 +239,18 @@ def test_model():
             rank = ranking.index(positive_id)
 
             metric.ranks.append(rank)
+            pos_dists.append(pos_distance)
+            neg_dists.append(neg_distance)
 
         hr = metric.hitrate(tests)
         mr = metric.mean_rank()
-        output.add_row([name, hr, mr])
+        pos_d = np.mean(pos_dists)
+        neg_d = np.mean(neg_dists)
+        output.add_row([name, hr, mr, pos_d, neg_d])
         ranks.append(mr)
         hitrates.append(hr)
 
-    return output, ranks, hitrates
+    return output, ranks, hitrates, [hr, mr, pos_d, neg_d]
 
 def testWeightsFolder():
     tables = []
@@ -257,7 +281,7 @@ if __name__ == '__main__':
     hr_table = PrettyTable()
     hr_table.field_names = ["Model", "Train", "Val", "Test"]
 
-    t, r , h = test_model()
+    t, r , h = test_model("runs/Embeddings_training_GCN13-Apr_0013")
     print(t)
 
 

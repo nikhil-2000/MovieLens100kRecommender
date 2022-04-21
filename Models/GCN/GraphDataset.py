@@ -32,14 +32,6 @@ class GCNDataset(DGLDataset):
         self.dataset.reduce_users_films()
         super(GCNDataset, self).__init__(name = "MovieLens")
     def process(self):
-        # G = nx.DiGraph()
-        self.users = self.create_users()
-        # user_dict, items_dict = self.build_dicts()
-        # user_node_data = list(user_dict.items())
-        # item_node_data = list(items_dict.items())
-        # G.add_nodes_from(user_node_data, bipartite = 0)
-        # G.add_nodes_from(item_node_data, bipartite = 1)
-
 
         user_ids = []
         movie_ids = []
@@ -65,7 +57,8 @@ class GCNDataset(DGLDataset):
             ,("movie", "rated_by", "user"): (movie_ids, user_ids)
         })
 
-        self.graph.nodes["user"].data["feat"] = self.user_vectors()
+        #Pinsage Sampler doesn't look at user nodes, only the other nearby movie nodes, therefore the user feature vectors aren't needed
+        # self.graph.nodes["user"].data["feat"] = self.user_vectors()
         self.graph.nodes["movie"].data["feat"], self.graph.nodes["movie"].data["label"] = self.movie_vectors()
         self.graph.edges[("user", "rating", "movie")].data["feat"] = torch.Tensor(ratings)
         self.graph.edges[("movie", "rated_by", "user")].data["feat"] = torch.Tensor(ratings)

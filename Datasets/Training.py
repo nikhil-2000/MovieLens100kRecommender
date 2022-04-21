@@ -2,6 +2,7 @@ import random
 
 import torch
 
+from datareader import Datareader
 from helper_funcs import categories,vector_features,add_metrics
 
 
@@ -46,6 +47,6 @@ class TrainDataset:
 
 
 if __name__ == '__main__':
-
-    mt = TrainDataset("../../../ml-100k/ua.base")
+    datareader = Datareader("ua.base")
+    mt = TrainDataset(datareader.ratings_df, datareader.user_df, datareader.items_df)
     print(mt[0])

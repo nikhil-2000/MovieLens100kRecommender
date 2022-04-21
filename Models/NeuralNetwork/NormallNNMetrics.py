@@ -80,6 +80,23 @@ class NormalNNMetrics:
     def mean_rank(self):
         return sum(self.ranks) / len(self.ranks)
 
+    def average_distances(self, anchor_id, positive_ids, negative_ids):
+
+        anchor = self.e_dict[anchor_id]
+
+        positives = [self.e_dict[k] for k in positive_ids]
+        positives = np.array(positives).squeeze()
+
+
+        negatives = [self.e_dict[k] for k in negative_ids]
+        negatives = np.array(negatives).squeeze()
+
+        pos_dists = np.linalg.norm(positives - anchor, axis=1)
+        neg_dists = np.linalg.norm(negatives - anchor, axis=1)
+
+
+        return np.mean(pos_dists), np.mean(neg_dists)
+
 
 class User:
 
@@ -119,10 +136,11 @@ def test_model(model_file):
     tests = 1000
     samples = 1000
     output = PrettyTable()
-    output.field_names = ["Data", "Hitrate", "Mean Rank"]
+    output.field_names = ["Data", "Hitrate", "Mean Rank","Pos", "Neg"]
 
     ranks = []
     hitrates = []
+    pos_dists, neg_dists = [],[]
     for metric, data, loader, name in params:
 
         print("\nTesting " + name)
@@ -150,6 +168,9 @@ def test_model(model_file):
             top_n = metric.top_n_questions(anchor, search_size)
             ranking = metric.rank_questions(all_ids, anchor)
 
+            positive_ids = data.item_ids[data.item_ids.isin(user_rating.movie_id.unique())].tolist()
+            pos_distance, neg_distance = metric.average_distances(anchor_id, positive_ids, random_ids)
+
             set_prediction = set(top_n)
             if any([pos in set_prediction for pos in user_rating.movie_id]):
                 metric.hits += 1
@@ -158,9 +179,14 @@ def test_model(model_file):
 
             metric.ranks.append(rank)
 
+            pos_dists.append(pos_distance)
+            neg_dists.append(neg_distance)
+
         hr = metric.hitrate(tests)
         mr = metric.mean_rank()
-        output.add_row([name, hr, mr])
+        pos_d = np.mean(pos_dists)
+        neg_d = np.mean(neg_dists)
+        output.add_row([name, hr, mr, pos_d, neg_d])
         ranks.append(mr)
         hitrates.append(hr)
 
@@ -195,11 +221,11 @@ if __name__ == '__main__':
     hr_table.field_names = ["Model", "Train", "Val", "Test"]
     hr_table.field_names = ["Model", "Train", "Val", "Test"]
 
-    for model_file in tqdm(os.listdir("WeightFiles")):
-        t, ranks, hitrates = test_model("WeightFiles/" + model_file)
-        model_files.append(model_file)
-        rank_table.add_row([model_file] + [str(r) for r in ranks])
-        hr_table.add_row([model_file] + [str(h) for h in hitrates])
+    # for model_file in tqdm(os.listdir("WeightFiles")):
 
-        print(rank_table)
-        print(hr_table)
+    t, ranks, hitrates = test_model("../../64_40_0.1_0.5_ua.base.pth")
+    # model_files.append(model_file)
+    # rank_table.add_row([model_file] + [str(r) for r in ranks])
+    # hr_table.add_row([model_file] + [str(h) for h in hitrates])
+
+    print(t)

@@ -2,7 +2,8 @@ import numpy as np
 from tqdm import tqdm
 vector_features = ['Unknown', 'Action', 'Adventure', 'Animation', 'Children\'s', 'Comedy', 'Crime', 'Documentary',
                    'Drama', 'Fantasy', 'Film-Noir', 'Horror', 'Musical', 'Mystery', 'Romance', 'Sci-Fi', 'Thriller',
-                   'War', 'Western', "avg_rating", "views", "male_views", "female_views", "occupation", "avg_age"]
+                   'War', 'Western', "avg_rating", "views", "male_views", "female_views", "avg_age"]
+# vector_features = ["avg_rating", "views", "male_views", "female_views", "avg_age"]
 
 categories = ['Unknown', 'Action', 'Adventure', 'Animation', 'Children\'s', 'Comedy', 'Crime', 'Documentary',
               'Drama', 'Fantasy', 'Film-Noir', 'Horror', 'Musical', 'Mystery', 'Romance', 'Sci-Fi', 'Thriller',
@@ -14,7 +15,6 @@ def add_metrics(ratings, users, items):
     watch_count = []
     male_count = []
     female_count = []
-    most_common_jobs = []
     avg_ages = []
     print("\nAdding Metrics")
     # for i, row in tqdm(items.iterrows(), total=len(items)):
@@ -35,14 +35,10 @@ def add_metrics(ratings, users, items):
         avg_age = movie_users["age"].mean()
         avg_ages.append(avg_age)
 
-        mode_job = 1  # movie_users['occupation'].value_counts().argmax()
-        most_common_jobs.append(mode_job)
-
     items["avg_rating"] = avg_ratings
     items["views"] = watch_count
     items["male_views"] = male_count
     items["female_views"] = female_count
-    items["occupation"] = most_common_jobs
     items["avg_age"] = avg_ages
 
 

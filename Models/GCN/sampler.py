@@ -117,12 +117,12 @@ def assign_textual_node_features(ndata, textset, ntype):
         tokens, lengths = field.process(examples)
 
         if not field.batch_first:
-            tokens = tokens.t()
+            tokens = tokens.summary_table()
 
         ndata[field_name] = tokens
         ndata[field_name + '__len'] = lengths
 
-def assign_features_to_blocks(blocks, g, textset, ntype):
+def assign_features_to_blocks(blocks, g, ntype):
     # For the first block (which is closest to the input), copy the features from
     # the original graph as well as the texts.
     assign_simple_node_features(blocks[0].srcdata, g, ntype)
@@ -141,12 +141,12 @@ class PinSAGECollator(object):
         heads, tails, neg_tails = batches[0]
         # Construct multilayer neighborhood via PinSAGE...
         pos_graph, neg_graph, blocks = self.sampler.sample_from_item_pairs(heads, tails, neg_tails)
-        assign_features_to_blocks(blocks, self.g, self.textset, self.ntype)
+        assign_features_to_blocks(blocks, self.g, self.ntype)
 
         return pos_graph, neg_graph, blocks
 
     def collate_test(self, samples):
         batch = torch.LongTensor(samples)
         blocks = self.sampler.sample_blocks(batch)
-        assign_features_to_blocks(blocks, self.g, self.textset, self.ntype)
+        assign_features_to_blocks(blocks, self.g, self.ntype)
         return blocks
