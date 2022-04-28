@@ -42,10 +42,10 @@ class Datareader:
 
 
         if training_frac < 1:
-            self.train, self.test = train_test_split(self.ratings_df, test_size=1 - training_frac, train_size=training_frac)
+            self.train, self.test = train_test_split(self.ratings_df, test_size=1 - training_frac)
         else:
             self.train = self.ratings_df
 
         if val_frac > 0:
-            self.train, self.validation = train_test_split(self.train, test_size=val_frac, train_size= 1- val_frac)
+            self.train, self.validation = train_test_split(self.train, test_size=val_frac)
 

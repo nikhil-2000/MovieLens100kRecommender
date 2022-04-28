@@ -2,38 +2,45 @@ import random
 
 import torch
 
+from Datasets.DatasetBase import DatasetBase
 from datareader import Datareader
 from helper_funcs import categories,vector_features,add_metrics
 
 
-class TrainDataset:
+class TrainDataset(DatasetBase):
     def __init__(self, interactions, users, items):
         # self.dataset = Dataset(filename, size=size)
-        self.interaction_df = interactions
-        self.user_df = users
+        super(TrainDataset, self).__init__(interactions, users, items)
 
-        self.item_df = add_metrics(interactions, users, items)
-        self.item_ids = self.item_df.index.to_series()
-
-    def __len__(self):
-        return len(self.item_df)
 
     def __getitem__(self, index: int):
+        row = self.interaction_df.iloc[index]
         # Extracts Categories + Metrics
-        movie_id = self.item_ids.iloc[index]
+        movie_id = row.movie_id
+        user_id = row.user_id
+        user_rating = self.users[self.id_to_idx[user_id]].avg_rating
         s = self.item_df.loc[movie_id]
-        data = s[vector_features].to_list()
+        movie_data = s[vector_features].to_list()
+        user_data = [user_rating, row.rating]
 
-        potential_cs = s[categories]
-        category = self.pick_cat(potential_cs)
+        data = user_data + movie_data
 
         # return torch.Tensor([s["avg_rating"],s["views"],s["male_views"],s["female_views"],s["avg_age"]])
 
-        return torch.Tensor(data), category
+        return torch.Tensor(data), user_id
 
-    def pick_cat(self, cats):
-        is_one_idx = [i for i, c in enumerate(cats) if c == 1]
-        return random.choice(is_one_idx)
+    def get_movie_data(self, movie_id):
+        # Extracts Categories + Metrics
+        s = self.item_df.loc[movie_id]
+        movie_data = s[vector_features].to_list()
+        vector = torch.Tensor(movie_data)
+        lbl = (vector == 1).nonzero()[0]
+
+
+        # return torch.Tensor([s["avg_rating"],s["views"],s["male_views"],s["female_views"],s["avg_age"]])
+
+        return vector, lbl
+
 
     def reduce_users_films(self):
         u_ids = self.interaction_df.user_id.unique()

@@ -60,7 +60,7 @@ def run_metrics(model, samples = 1000, tests = 1000, size = 0):
             total_ratings = 0
             while total_ratings < 3:
                 user = neural_network_metrics.sample_user()
-                user_rating, total_ratings = user.ratings, len(user.ratings)
+                user_rating, total_ratings = user.interactions, len(user.interactions)
             # Generate Anchor Positive
             a_idx, p_idx = random.sample(range(0, total_ratings), 2)
             anchor = user_rating.iloc[a_idx]
@@ -76,7 +76,7 @@ def run_metrics(model, samples = 1000, tests = 1000, size = 0):
 
             # Find n Closest
             for i,m in enumerate(metrics):
-                top_n = m.top_n_questions(anchor, search_size)
+                top_n = m.top_n_items(anchor, search_size)
                 ranking = m.rank_questions(all_ids, anchor)
 
                 set_prediction = set(top_n)

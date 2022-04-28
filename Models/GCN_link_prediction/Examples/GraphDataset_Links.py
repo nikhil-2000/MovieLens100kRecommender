@@ -3,6 +3,7 @@ import torch
 import networkx as nx
 from dgl.data import DGLDataset
 from sklearn.preprocessing import MinMaxScaler
+from torch import nn
 from torch_geometric.data import HeteroData
 import torch_geometric.transforms as T
 
@@ -27,42 +28,57 @@ Edge weights are user ratings
 
 class GCNDataset(DGLDataset):
 
-    def __init__(self, dataset):
+    def __init__(self, dataset : TrainDataset):
+        self.interaction_df = dataset.interaction_df
+        self.user_df = dataset.user_df
+        self.item_df = dataset.item_df
         self.dataset = dataset
-        self.dataset.reduce_users_films()
         super(GCNDataset, self).__init__(name = "MovieLens")
     def process(self):
 
-        user_ids = []
-        movie_ids = []
-        ratings = []
+        idx_to_type = {}
+        idx_to_id = {}
+        id_to_idx = {}
 
-        u_to_graph_id = {user_id : i for i, user_id in enumerate(self.dataset.interaction_df.user_id.unique())}
-        m_to_graph_id = {movie_id : i for i, movie_id in enumerate(self.dataset.interaction_df.movie_id.unique())}
-        for i, row in self.dataset.interaction_df.iterrows():
+        for i, user_id in enumerate(self.interaction_df.user_id.unique()):
+            idx_to_type[i] = "user"
+            idx_to_id[i] = user_id
+            id_to_idx[user_id] = i
+
+        x = i
+        for _, movie_id in enumerate(self.interaction_df.movie_id.unique()):
+            idx_to_type[x] = "movie"
+            idx_to_id[x] = movie_id
+            id_to_idx[movie_id] = x
+            x = x+1
+
+        u, v = [],[]
+        for i, row in self.interaction_df.iterrows():
             user = row.user_id.item()
             item = row.movie_id.item()
-            rating = row.rating.item()
-            ratings += [rating]
-            user_ids.append(u_to_graph_id[user])
-            movie_ids.append(m_to_graph_id[item])
+            u.append(id_to_idx[user])
+            v.append(id_to_idx[item])
 
-
-        self.graph_user_ids = list(u_to_graph_id.values())
-        self.graph_movie_ids = list(m_to_graph_id.values())
-        self.graph_id_to_movie = {v : k for k,v in m_to_graph_id.items()}
 
         self.graph = dgl.heterograph({
-            ("user","rating","movie"): (user_ids, movie_ids)
-            ,("movie", "rated_by", "user"): (movie_ids, user_ids)
+            ("_N","_E","_N"): (u, v)
+            # ,("movie", "rated_by", "user"): (movie_ids, user_ids)
         })
+        #
+        # max_users = max(self.graph_user_ids) + 1
+        # max_movie = max(self.graph_movie_ids) + 1
 
-        #Pinsage Sampler doesn't look at user nodes, only the other nearby movie nodes, therefore the user feature vectors aren't needed
-        # self.graph.nodes["user"].data["feat"] = self.user_vectors()
-        self.graph.nodes["movie"].data["feat"], self.graph.nodes["movie"].data["label"] = self.movie_vectors()
-        self.graph.edges[("user", "rating", "movie")].data["feat"] = torch.Tensor(ratings)
-        self.graph.edges[("movie", "rated_by", "user")].data["feat"] = torch.Tensor(ratings)
-
+        # self.movie_embedding = nn.Embedding(max_movie, 20)
+        #
+        # #Pinsage Sampler doesn't look at user nodes, only the other nearby movie nodes, therefore the user feature vectors aren't needed
+        # # self.graph.nodes["user"].data["features"] = self.user_vectors()
+        # self.graph.nodes["movie"].data["features"], self.graph.nodes["movie"].data["label"]= self.movie_vectors()
+        # self.graph.edges[("user", "rating", "movie")].data["features"] = torch.Tensor(ratings)
+        # # self.graph.edges[("movie", "rated_by", "user")].data["features"] = torch.Tensor(ratings)
+        # user_ids = torch.Tensor(self.graph_user_ids).long()
+        # # movie_ids =  torch.Tensor(self.graph_movie_ids).long()
+        self.embedding = nn.Embedding(self.graph.number_of_nodes(), 100)
+        self.graph.ndata["feat"] = self.embedding(self.graph.nodes())
         print(self.graph)
 
 
@@ -70,22 +86,23 @@ class GCNDataset(DGLDataset):
         return self.graph
 
     def user_vectors(self):
-        vs = [u.get_vector().transpose() for u in self.users]
-        vs = np.array(vs).squeeze()
-        return torch.Tensor(vs).float()
+        vs = [torch.Tensor([u.avg_rating]) for u in self.dataset.users]
+        vs = torch.stack(vs)
+        return vs.float()
 
 
     def movie_vectors(self):
         vs = []
         labels = []
-        for i, lbl in enumerate(self.dataset.item_ids):
-            v , lbl = self.dataset[i]
-            vs.append(v)
+        for g_movie_id in self.graph_movie_ids:
+            movie_id = self.graph_id_to_movie[g_movie_id]
+            vector,lbl = self.dataset.get_movie_data(movie_id)
+            vs.append(vector)
             labels.append(lbl)
 
         vs = torch.stack(vs)
-        labels = torch.Tensor(labels)
-        return vs.float(), labels.long()
+        labels = torch.stack(labels)
+        return vs.float(), labels
 
 
     def __len__(self):
@@ -190,26 +207,6 @@ class User:
     def get_vector(self):
         # print(self.scores.transpose().shape)
         return self.scores.transpose()
-
-def create_hetero_data(ratings, users, items):
-    dataset = TrainDataset(ratings, users, items)
-
-    dataset = GCNDataset(dataset)
-    user_vectors = dataset.user_vectors()
-    movie_vectors = dataset.movie_vectors()
-    edge_idxs, edge_data = dataset.edge_rating_indexes()
-    print()
-    data = HeteroData()
-    #
-    data['movie'].x = movie_vectors  # [num_papers, num_features_paper]
-    data['user'].x = user_vectors  # [num_authors, num_features_author]
-
-    data['user', 'rates', 'movie'].edge_index = edge_idxs  # [2, num_edges_cites]
-
-    data['user', 'rates', 'movie'].edge_attr = edge_data  # [1, num_edges_cites]
-
-    data = T.ToUndirected()(data)
-    return data
 
 
 if __name__ == '__main__':

@@ -1,23 +1,41 @@
 import torch.nn as nn
+from dgl import apply_each
 
-import Models.GCN.layers as layers
+import dgl.nn.pytorch as dglnn
+import torch.nn.functional as F
 
-
-class PinSAGEModel(nn.Module):
-    def __init__(self, full_graph, ntype, hidden_dims, n_layers):
+class GCNModel(nn.Module):
+    def __init__(self):
         super().__init__()
+        n_hidden = 40
+        n_layers = 2
 
-        self.proj = layers.LinearProjector(full_graph, ntype, hidden_dims)
-        self.sage = layers.SAGENet(hidden_dims, n_layers)
-        self.scorer = layers.ItemToItemScorer(full_graph, ntype)
 
-    def forward(self, pos_graph, neg_graph, blocks):
-        h_item = self.get_repr(blocks)
-        pos_score = self.scorer(pos_graph, h_item)
-        neg_score = self.scorer(neg_graph, h_item)
-        return (neg_score - pos_score + 0.05).clamp(min=0)
+        self.n_layers = 2
+        self.n_hidden = n_hidden
+        embedding_size = 20
 
-    def get_repr(self, blocks):
-        h_item = self.proj(blocks[0].srcdata)
-        h_item_dst = self.proj(blocks[-1].dstdata)
-        return h_item_dst + self.sage(blocks, h_item)
+        etypes = ["rating","rated_by"]
+        self.layers = nn.ModuleList()
+        self.layers.append(dglnn.HeteroGraphConv({
+            "rating": dglnn.GraphConv(20,n_hidden),
+            "rated_by": dglnn.GraphConv(24,n_hidden)
+        }))
+        for i in range(1, n_layers - 1):
+            self.layers.append(dglnn.HeteroGraphConv({
+                etype: dglnn.GraphConv(n_hidden, n_hidden) for etype in etypes
+            }))
+        self.layers.append(dglnn.HeteroGraphConv({
+            etype: dglnn.GraphConv(n_hidden, embedding_size) for etype in etypes
+        }))
+        # self.dropout = nn.Dropout(dropout)
+        self.activation = F.relu
+
+    def forward(self, blocks, x):
+        h = x
+        for l, (layer, block) in enumerate(zip(self.layers, blocks)):
+            h = layer(block, h)
+            if l != len(self.layers) - 1:
+                h = apply_each(h,self.activation)
+                # h = self.dropout(h)
+        return h
