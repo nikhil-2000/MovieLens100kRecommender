@@ -31,6 +31,21 @@ class TestDataset(DatasetBase):
 
         return torch.Tensor(data), metadata_row, (movie_id, user_id)
 
+    def get_by_ids(self, movie_id, user_id):
+        row = self.interaction_df.loc[(self.interaction_df.movie_id == movie_id) & (self.interaction_df.user_id == user_id)]
+
+
+        user_rating = self.users[self.id_to_idx[user_id]].avg_rating
+        s = self.item_df.loc[movie_id]
+        movie_data = s[vector_features].to_list()
+        user_data = [user_rating, row.rating]
+
+        data = user_data + movie_data
+
+        # return torch.Tensor([s["avg_rating"],s["views"],s["male_views"],s["female_views"],s["avg_age"]])
+
+        return torch.Tensor(data)
+
 
 if __name__ == '__main__':
     datareader = Datareader("ua.base")

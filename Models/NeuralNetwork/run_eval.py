@@ -16,22 +16,36 @@ from helper_funcs import MRR, Recall, AveragePrecision
 
 
 def test_model(model_file):
-    train_reader = Datareader("ua.base", size=20000, training_frac=1, val_frac=0.2)
-    # test_reader = Datareader("ua.test", size=10000, training_frac=1)
+    train_reader = Datareader("ua.base", size=0, training_frac=1, val_frac=0.25)
+    test_reader = Datareader("ua.test", size=0, training_frac=1)
 
     metrics = []
     datasets = []
     dataloaders = []
 
-    for df in [train_reader.train, train_reader.validation]:
-        data = TestDataset(df, train_reader.user_df, train_reader.items_df)
-        loader = DataLoader(data, batch_size=64)
-        metric = NormalNNMetrics(loader, model_file, data)
-        metrics.append(metric)
-        datasets.append(data)
-        dataloaders.append(loader)
+    data = TestDataset(train_reader.train, train_reader.user_df, train_reader.items_df)
+    loader = DataLoader(data, batch_size=1024)
+    train_metric = NormalNNMetrics(loader, model_file, data)
+    # metrics.append(train_metric)
+    # datasets.append(data)
+    # dataloaders.append(loader)
 
-    model_names = ["Train", "Val"]
+    # data = TestDataset(train_reader.validation,train_reader.user_df, train_reader.items_df)
+    # loader = DataLoader(data, batch_size=1024)
+    # metric = NormalNNMetrics(loader, model_file, data, (train_metric.embeddings, train_metric.metadata))
+    # metrics.append(metric)
+    # datasets.append(data)
+    # dataloaders.append(loader)
+
+    data = TestDataset(test_reader.ratings_df, test_reader.user_df, test_reader.items_df)
+    loader = DataLoader(data, batch_size=1024)
+    metric = NormalNNMetrics(loader, model_file, data, (train_metric.embeddings, train_metric.metadata))
+    metrics.append(metric)
+    datasets.append(data)
+    dataloaders.append(loader)
+
+    # model_names = ["Train", "Val", "Test"]
+    model_names = ["Test"]
 
     params = zip(metrics, datasets, model_names)
 
@@ -40,19 +54,29 @@ def test_model(model_file):
 
     search_size = 100
     ap_length = 20
-    tests = 1000
+    tests = 5000
     # samples = 1000
 
     for metric, data, name in params:
 
         print("\nTesting " + name)
-        for i in trange(tests):
+
+        if name == "Train" or name == "Val":
+            users = []
+            while len(users) < tests:
+                user = data.sample_user()
+                total_interactions = len(user.interactions)
+                if total_interactions > 5:
+                    users.append(user)
+        else:
+            users = data.users
+        for user in tqdm(users):
             # for i in range(tests):
             # Pick Random User
-            total_interactions = 0
-            while total_interactions < 5:
-                user = data.sample_user()
-                user_interactions, total_interactions = user.interactions, len(user.interactions)
+            # total_interactions = 0
+            # while total_interactions < 5:
+            #     user = data.sample_user()
+            user_interactions, total_interactions = user.interactions, len(user.interactions)
             # Generate Anchor Positive
             a_idx, p_idx = random.sample(range(0, total_interactions), 2)
             anchor = user_interactions.iloc[a_idx]
@@ -85,7 +109,7 @@ def test_model(model_file):
 
 def visualise(model_file, name):
     name = name + datetime.now().strftime("%b%d_%H-%M-%S")
-    datareader = Datareader("ua.base", size=1000, training_frac=1, val_frac=0.2)
+    datareader = Datareader("ua.base", size=5000, training_frac=1, val_frac=0.2)
     add_embeddings_to_tensorboard(datareader, model_file,name)
 
 
@@ -121,25 +145,26 @@ def testWeightsFolder(datareader):
 
 if __name__ == '__main__':
 
-    # train_table = PrettyTable()
-    # train_table.field_names = ["Model", "Mean Reciprocal Rank", "Average Precision", "Recall By User"]
-    # validation_table = PrettyTable()
-    # validation_table.field_names = ["Model", "Mean Reciprocal Rank", "Average Precision", "Recall By User"]
-    #
-    # test_table = PrettyTable()
-    # test_table.field_names = ["Model", "Mean Reciprocal Rank", "Average Precision", "Recall By User"]
-    model_file = "64_30_0.05_0.01_ua.base_Apr25_15-48-36.pth"
+    train_table = PrettyTable()
+    train_table.field_names = ["Model", "Mean Reciprocal Rank", "Average Precision", "Recall By User"]
+    validation_table = PrettyTable()
+    validation_table.field_names = ["Model", "Mean Reciprocal Rank", "Average Precision", "Recall By User"]
+
+    test_table = PrettyTable()
+    test_table.field_names = ["Model", "Mean Reciprocal Rank", "Average Precision", "Recall By User"]
+    model_file = "1024_10_1_0.001_50000_May03_19-22-36.pth"
     model_file_path = "WeightFiles/" + model_file
-    # train_row, val_row = test_model(model_file_path)
+    # train_row, val_row, test_row = test_model(model_file_path)
+    test_row = test_model(model_file_path)[0]
     # train_table.add_row([model_file] + [str(r) for r in train_row])
     # validation_table.add_row([model_file] + [str(r) for r in val_row])
-    # # test_table.add_row([model_file] + [str(r) for r in test_row])
-    # print(train_table)
-    # print()
-    # print(validation_table)
-    # print()
-    # print(test_table)
+    test_table.add_row([model_file] + [str(r) for r in test_row])
+    print(train_table)
+    print()
+    print(validation_table)
+    print()
+    print(test_table)
     # with open("results.txt", "w") as f:
     #     f.write(str(train_table) + "\n" + str(validation_table) + "\n" + str(test_table))
 
-    visualise(model_file_path, "Embeddings")
+    # visualise(model_file_path, "Embeddings")

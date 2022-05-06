@@ -39,8 +39,9 @@ class GraphDataset(DGLDataset):
 
 
         self.user_count, self.item_count = len(user_ids), len(item_ids)
-
+        torch.manual_seed(1)
         self.user_embeddings_layer = nn.Embedding(self.user_count, node_embedding)
+        torch.manual_seed(1)
         self.item_embeddings_layer = nn.Embedding(self.item_count, node_embedding)
 
         user_nodes = torch.arange(self.user_count).long()
@@ -82,11 +83,15 @@ class GraphDataset(DGLDataset):
 
 
 if __name__ == '__main__':
+    import matplotlib.pyplot as plt
+    data = Datareader("ua.base",size = 1000, training_frac=0.7, val_frac=0.3)
+    # user_ids = data.user_df.index.unique().tolist()
+    # item_ids = data.items_df.index.unique().tolist()
+    #
+    #
+    # g_data = GraphDataset(user_ids, item_ids, data.train, data.validation, data.test)
+    #
 
-    data = Datareader("ua.base",size = 10000, training_frac=0.7, val_frac=0.3)
-    user_ids = data.user_df.index.unique().tolist()
-    item_ids = data.items_df.index.unique().tolist()
-
-
-    g_data = GraphDataset(user_ids, item_ids, data.train, data.validation, data.test)
-
+    dataset = TrainDataset(data.ratings_df, data.user_df, data.items_df)
+    user = dataset.sample_user()
+    df = user.interactions.sample(10)

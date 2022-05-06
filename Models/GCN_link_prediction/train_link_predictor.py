@@ -4,13 +4,14 @@ from datetime import datetime
 import dgl
 import numpy as np
 import torch
+from prettytable import PrettyTable
 from sklearn.metrics import roc_auc_score
 from torch.utils.tensorboard import SummaryWriter
 
 from Datasets.GraphDataset_Old import GCNDataset
 from Datasets.GraphDataset import GraphDataset
 from Datasets.Training import TrainDataset
-from Models.GCN_link_prediction.LinkPredictor import GraphSAGE, DotPredictor
+from Models.GCN_link_prediction.LinkPredictor import GraphSAGE, DotPredictor, MLPPredictor
 from Models.GCN_link_prediction.run_eval import test_model
 from datareader import Datareader
 import torch.nn.functional as F
@@ -35,6 +36,7 @@ def compute_loss(pos_score, neg_score):
 def compute_auc(pos_score, neg_score):
     #Same as above
     scores = torch.cat([pos_score, neg_score]).numpy()
+
     labels = torch.cat(
         [torch.ones(pos_score.shape[0]), torch.zeros(neg_score.shape[0])]).numpy()
     #Measures difference between labels and actual guesses
@@ -120,21 +122,23 @@ def learn(train_graphs, val_graphs, args):
     # train_graph, train_pos, train_neg = train_graphs
     # val_graph, val_pos, val_neg = val_graphs
     run_name =  "_".join([str(a) for a in args]) + datetime.now().strftime("%b%d_%H-%M-%S")
-    outpath = "WeightFiles/" + "_".join([str(a) for a in args]) + datetime.now().strftime("%b%d_%H-%M-%S")
-    numepochs, lr, hidden_feats, embedding_size = args
+    numepochs, lr, in_feat, hidden_feats, embedding_size = args
 
     train_graph , _, _ = train_graphs
     in_feat = train_graph.ndata['feat']["user"].shape[1]
     model = GraphSAGE(in_feat, hidden_feats, embedding_size)
-    pred = DotPredictor()
+    pred = MLPPredictor(embedding_size)
 
     optimizer = torch.optim.Adam(itertools.chain(model.parameters(), pred.parameters()), lr = lr)
 
     train_writer = SummaryWriter(log_dir="runs/" + run_name + "_train")
     val_writer = SummaryWriter(log_dir="runs/" + run_name + "_val")
 
+    outpaths = []
+    epoch = max(numepochs)
+
     model.train()
-    for e in range(numepochs):
+    for e in range(epoch+1):
         # forward the node embeddings
         for phase in ["train", "validation"]:
             if phase == "train":
@@ -158,43 +162,125 @@ def learn(train_graphs, val_graphs, args):
                 loss.backward(retain_graph=True)
                 optimizer.step()
 
-                if e % 5 == 0:
+                if e % 20 == 0:
                     print('In epoch {}, loss: {}'.format(e, loss))
 
             writer.add_scalar("Epoch_loss/", loss, e + 1)
 
-    with torch.no_grad():
-        h = model(train_graph, train_graph.ndata['feat'])
+        if e in numepochs:
 
-        pos_score = pred(val_graphs[1], h)
-        neg_score = pred(val_graphs[2], h)
-        print('AUC', compute_auc(pos_score, neg_score))
 
-    torch.save({
-        'epoch': e,
-        'model_state_dict': model.state_dict(),
-        'optimzier_state_dict': optimizer.state_dict(),
-        'loss': loss,
-        'in_feat':in_feat,
-        'hidden_feat':hidden_feats,
-        'emb_size':embedding_size
-    }, outpath + '.pth')
-    return outpath + '.pth'
+            with torch.no_grad():
+                h = model(train_graph, train_graph.ndata['feat'])
 
-if __name__ == '__main__':
+                pos_score = pred(val_graphs[1], h)
+                neg_score = pred(val_graphs[2], h)
+                print('AUC', compute_auc(pos_score, neg_score))
 
-    train_reader = Datareader("ua.base", size = 0, training_frac=1, val_frac= 0.1)
-    test_reader = Datareader("ua.test", size = 0, training_frac= 1)
-    all_reader = Datareader("u.data", size = 0, training_frac= 0.7, val_frac=0.1)
+            model_args = [e] + args[1:]
+            outpath = "WeightFiles/" + "_".join([str(a) for a in model_args]) + datetime.now().strftime("%b%d_%H-%M-%S")
+            torch.save({
+                'epoch': e,
+                'model_state_dict': model.state_dict(),
+                'optimzier_state_dict': optimizer.state_dict(),
+                'mlp_state_dict': pred.state_dict(),
+                'loss': loss,
+                'in_feat': in_feat,
+                'hidden_feat': hidden_feats,
+                'emb_size': embedding_size
+            }, outpath + '.pth')
+            outpaths.append(outpath + '.pth')
 
-    # user_ids = train_reader.user_df.index.unique().tolist()
-    # item_ids = train_reader.items_df.index.unique().tolist()
-    # dataset = GraphDatasetNew(user_ids, item_ids, train_reader.train, train_reader.validation, test_reader.ratings_df, node_embedding = 100)
+    return outpaths
 
-    user_ids = all_reader.user_df.index.unique().tolist()
-    item_ids = all_reader.items_df.index.unique().tolist()
-    dataset = GraphDataset(user_ids, item_ids, all_reader.train, all_reader.validation, all_reader.test,
-                           node_embedding=100)
+def hyperparams():
+
+    initial_embeddings = [50, 100,200]
+    hidden_features = [50, 100,200]
+    # output_embeddings = [20, 50, 100]
+    # model_feats = [(50,50,200), (50,100,200),(100,50,200),(100,100,200),(100,200,100)]
+    lrs = [0.001, 0.005, 0.01]
+    epochs = [200,350,500]
+
+
+    train_table = PrettyTable()
+    train_table.field_names = ["Model", "Mean Reciprocal Rank", "Average Precision", "Recall By User"]
+    val_table = PrettyTable()
+    val_table.field_names = ["Model", "Mean Reciprocal Rank", "Average Precision", "Recall By User"]
+    test_table = PrettyTable()
+    test_table.field_names = ["Model", "Mean Reciprocal Rank", "Average Precision", "Recall By User"]
+    train_reader = Datareader("ua.base", size=0, training_frac=1, val_frac=0.25)
+    test_reader = Datareader("ua.test", size=0, training_frac=1)
+
+    user_ids = train_reader.user_df.index.unique().tolist()
+    item_ids = train_reader.items_df.index.unique().tolist()
+
+    params = [initial_embeddings, hidden_features, lrs]
+
+    trainDataset = TrainDataset(train_reader.train, train_reader.user_df, train_reader.items_df)
+    validationDataset = TrainDataset(train_reader.validation, train_reader.user_df, train_reader.items_df)
+    testDataset = TrainDataset(test_reader.ratings_df, test_reader.user_df, test_reader.items_df)
+
+    for run_parameters in itertools.product(*params):
+        _in_embs, _hidden, _lr = run_parameters
+
+
+        dataset = GraphDataset(user_ids, item_ids,
+                               train_reader.train, train_reader.validation, test_reader.ratings_df,
+                               node_embedding = _in_embs)
+
+        positive_train, negative_train = pos_neg_graphs(dataset.train_graph)
+        positive_validation, negative_validation = pos_neg_graphs(dataset.validation_graph)
+        positive_test, negative_test = pos_neg_graphs(dataset.test_graph)
+
+        train_pos_g = construct_graph(dataset.train_graph, positive_train)
+        # Builds negative graph using interactions that don't exist
+        train_neg_g = construct_graph(dataset.train_graph, negative_train)
+
+        val_pos_g = construct_graph(dataset.validation_graph, positive_validation)
+        # Builds negative graph using interactions that don't exist
+        val_neg_g = construct_graph(dataset.validation_graph, negative_validation)
+
+
+
+        model_files = learn([dataset.train_graph, train_pos_g, train_neg_g],
+                           [dataset.validation_graph, val_pos_g, val_neg_g],
+                           [epochs, _lr, _in_embs, _hidden, _hidden])
+
+        #Test Dataset With Val Data
+        # val_test_interactions = pd.concat([train_reader.validation, test_reader.ratings_df])
+        for model_file in model_files:
+            train_row, val_row, test_row = test_model(model_file, dataset, trainDataset, validationDataset, testDataset)
+
+            train_table.add_row([model_file] + [str(r) for r in train_row])
+            val_table.add_row([model_file] + [str(r) for r in val_row])
+            test_table.add_row([model_file] + [str(r) for r in test_row])
+
+        print(train_table)
+        print()
+        print(val_table)
+        print()
+        print(test_table)
+        print()
+        with open("results-new.txt", "w") as f:
+            f.write(str(train_table) + "\n" + str(val_table) + "\n" + str(test_table))
+
+def single_model():
+    train_reader = Datareader("ua.base", size=0, training_frac=1, val_frac=0.25)
+    test_reader = Datareader("ua.test", size=0, training_frac=1)
+
+    user_ids = train_reader.user_df.index.unique().tolist()
+    item_ids = train_reader.items_df.index.unique().tolist()
+
+
+    trainDataset = TrainDataset(train_reader.train, train_reader.user_df, train_reader.items_df)
+    validationDataset = TrainDataset(train_reader.validation, train_reader.user_df, train_reader.items_df)
+    testDataset = TrainDataset(test_reader.ratings_df, test_reader.user_df, test_reader.items_df)
+    _in_embs = 50
+
+    dataset = GraphDataset(user_ids, item_ids,
+                           train_reader.train, train_reader.validation, test_reader.ratings_df,
+                           node_embedding = _in_embs)
 
     positive_train, negative_train = pos_neg_graphs(dataset.train_graph)
     positive_validation, negative_validation = pos_neg_graphs(dataset.validation_graph)
@@ -208,24 +294,18 @@ if __name__ == '__main__':
     # Builds negative graph using interactions that don't exist
     val_neg_g = construct_graph(dataset.validation_graph, negative_validation)
 
-    # Same again
-    # test_pos_g = construct_graph(train_graph, positive_test)
-    # # Builds negative graph using interactions that don't exist
-    # test_neg_g = construct_graph(train_graph, negative_test)
+    epochs, _lr, _in_embs, _hidden = [200,350,500], 0.005, 50, 100
 
-    model_file = learn([dataset.train_graph, train_pos_g, train_neg_g],
+    model_files = learn([dataset.train_graph, train_pos_g, train_neg_g],
                        [dataset.validation_graph, val_pos_g, val_neg_g],
-                       [200, 0.01, 40 ,30])
-
-    neg_u, neg_v = get_negatives(dataset.train_graph)
-
-    full_negative_graph = construct_graph(dataset.test_graph, (neg_u, neg_v))
-    full_negative_graph.ndata["feat"] = dataset.test_graph.ndata["feat"]
+                       [epochs, _lr, _in_embs, _hidden, _hidden])
 
     #Test Dataset With Val Data
     # val_test_interactions = pd.concat([train_reader.validation, test_reader.ratings_df])
-    trainDataset = TrainDataset(train_reader.train, train_reader.user_df, train_reader.items_df)
-    testDataset = TrainDataset(test_reader.ratings_df, test_reader.user_df, test_reader.items_df)
+    # model_file = "WeightFiles/350_0.005_50_200_200May04_17-19-09.pth"
+    for model_file in model_files:
+        results = test_model(model_file, dataset, trainDataset, validationDataset, testDataset)
+        print(results)
 
-    results = test_model(dataset.train_graph, full_negative_graph ,model_file, dataset, trainDataset, testDataset)
-    print(results)
+if __name__ == '__main__':
+    single_model()

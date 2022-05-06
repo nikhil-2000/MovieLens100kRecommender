@@ -24,19 +24,15 @@ class UnweightedRandomWalk:
         ratings = self.dataset.interaction_df
         movies = self.dataset.item_df
 
-        user_ratings = ratings.sort_values("user_id")
+        user_ratings = ratings.merge(self.dataset.item_df, left_on = "movie_id", right_index = True, how = "left")
 
 
-        user_ratings[categories] = None
-        all_users = user_ratings.user_id.unique()
-
-        all_movies = self.dataset.item_ids
-
-        print("\n Adding Categories")
-        for id in tqdm(all_movies):
-            movie_categories = movies.loc[id][categories]
-            for c in categories:
-                user_ratings.loc[user_ratings.movie_id == id, c] = movie_categories[c]
+        #
+        # print("\n Adding Categories")
+        # for id in tqdm(all_movies):
+        #     movie_categories = movies.loc[id][categories]
+        #     for c in categories:
+        #         user_ratings.loc[user_ratings.movie_id == id, c] = movie_categories[c]
 
         users = []
         # print(len(all_skills))

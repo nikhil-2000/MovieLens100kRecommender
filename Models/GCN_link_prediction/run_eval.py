@@ -15,19 +15,38 @@ from datareader import Datareader
 from helper_funcs import MRR, Recall, AveragePrecision
 
 
-def test_model(train_graph, full_negative, model_file, graphDataset, trainDataset, testDataset):
+def get_edges_for_positives(anchor, positives, graph):
+
+    user_id = anchor.user_id.item()
+    user_id = user_id - 1
+    pos_edges = positives.tolist() + [int(anchor.movie_id.item())]
+
+    u, v = graph.edges(etype = "rating")
+    eids = (u == user_id).nonzero()
+    graph_ids = v[eids].squeeze().detach().tolist()
+    found_edges = list(map(lambda x: x+1, graph_ids))
+
+    same_length = len(pos_edges) == len(found_edges)
+    same_items = set(positives) == set(pos_edges)
+
+    return
+
+
+def test_model(model_file, graphDataset, trainDataset, validationDataset,testDataset):
 
     """
     Take in a graph + Model
 
     """
-
-    train_metric = LinkPredictorMetrics(train_graph, model_file, graphDataset)
-    test_metric = LinkPredictorMetrics(full_negative, model_file, graphDataset)
+    train_graph = graphDataset.train_graph
+    train_metric = LinkPredictorMetrics(model_file, graphDataset, train_graph)
+    val_metric = LinkPredictorMetrics(model_file, graphDataset, train_graph)
+    test_metric = LinkPredictorMetrics(model_file, graphDataset, train_graph)
     # model_names = ["Train", "Val"]
-    model_names = ["Train", "Test"]
-    datasets = [trainDataset, testDataset]
-    metrics = [train_metric, test_metric]
+    model_names = ["Train", "Val", "Test"]
+    datasets = [trainDataset, validationDataset, testDataset]
+    metrics = [train_metric, val_metric, test_metric]
+
 
     params = zip(metrics, datasets, model_names)
 
@@ -36,18 +55,29 @@ def test_model(train_graph, full_negative, model_file, graphDataset, trainDatase
 
     search_size = 100
     ap_length = 20
-    tests = 100
+    tests = 500
     # samples = 1000
 
     for metric, dataset, name in params:
         print("\nTesting " + name)
-        for i in trange(tests):
+
+        if name == "Train" or name == "Val":
+            users = []
+            while len(users) < tests:
+                user = dataset.sample_user()
+                total_interactions = len(user.interactions)
+                if total_interactions > 5:
+                    users.append(user)
+        else:
+            users = dataset.users
+
+        for user in tqdm(users):
             # for i in range(tests):
             # Pick Random User
-            total_interactions = 0
-            while total_interactions < 5:
-                user = dataset.sample_user()
-                user_interactions, total_interactions = user.interactions, len(user.interactions)
+            # total_interactions = 0
+            # while total_interactions < 5:
+            #     user = dataset.sample_user()
+            user_interactions, total_interactions = user.interactions, len(user.interactions)
 
             # Generate Anchor Positive
             a_idx, p_idx = random.sample(range(0, total_interactions), 2)
@@ -56,20 +86,23 @@ def test_model(train_graph, full_negative, model_file, graphDataset, trainDatase
             positive_ids = dataset.item_ids[dataset.item_ids.isin(user_interactions.movie_id.unique())]
             positive_ids = positive_ids[dataset.item_ids != anchor.movie_id.item()]
 
+
             if name == "Train":
-                top_n = metric.top_n_items(anchor, search_size)
-                mrr = MRR(positive_ids, top_n)
-                # top_n = metric.top_n_items(anchor, ap_length)
+                x = max(search_size, total_interactions - 1)
+                top_n = metric.top_n_items(anchor, x)
+                mrr = MRR(positive_ids, top_n[:search_size])
+                # top_n = metric.top_n_items_edges(anchor, ap_length)
                 ap = AveragePrecision(positive_ids, top_n[:ap_length])
-                top_n = metric.top_n_items(anchor, total_interactions - 1)
-                rec = Recall(positive_ids, top_n)
-            elif name == "Test":
-                top_n = metric.top_n_items_edges(anchor, search_size)
-                mrr = MRR(positive_ids, top_n)
-                top_n = metric.top_n_items_edges(anchor, ap_length)
-                ap = AveragePrecision(positive_ids, top_n)
-                top_n = metric.top_n_items_edges(anchor, total_interactions - 1)
-                rec = Recall(positive_ids, top_n)
+                # top_n = metric.top_n_items_edges(anchor, total_interactions - 1)
+                rec = Recall(positive_ids, top_n[:total_interactions - 1])
+            else:
+                x = max(search_size, total_interactions - 1)
+                top_n = metric.top_n_items_edges(anchor, x)
+                mrr = MRR(positive_ids, top_n[:search_size])
+                # top_n = metric.top_n_items_edges(anchor, ap_length)
+                ap = AveragePrecision(positive_ids, top_n[:ap_length])
+                # top_n = metric.top_n_items_edges(anchor, total_interactions - 1)
+                rec = Recall(positive_ids, top_n[:total_interactions - 1])
 
 
             metric.mrr_ranks.append(mrr)
@@ -88,36 +121,11 @@ def test_model(train_graph, full_negative, model_file, graphDataset, trainDatase
 
 
 
-def visualise(model_file, name):
-    datareader = Datareader("ua.base", size=1000, training_frac=1, val_frac=0.2)
-    add_embeddings_to_tensorboard(datareader, model_file,name)
+# def visualise(model_file, name):
+#     datareader = Datareader("ua.base", size=1000, training_frac=1, val_frac=0.2)
+#     add_embeddings_to_tensorboard(datareader, model_file,name)
 
 
-def testWeightsFolder():
-
-    train_table = PrettyTable()
-    train_table.field_names = ["Model","Mean Reciprocal Rank","Average Precision","Recall By User"]
-    validation_table = PrettyTable()
-    validation_table.field_names = ["Model", "Mean Reciprocal Rank", "Average Precision", "Recall By User"]
-
-    test_table = PrettyTable()
-    test_table.field_names = ["Model", "Mean Reciprocal Rank", "Average Precision", "Recall By User"]
-
-    for model_file in tqdm(os.listdir("WeightFiles")):
-        model_file_path = "WeightFiles/" + model_file
-        train_row, val_row = test_model(model_file_path)
-        train_table.add_row([model_file] + [str(r) for r in train_row])
-        validation_table.add_row([model_file] + [str(r) for r in val_row])
-        # test_table.add_row([model_file] + [str(r) for r in test_row])
-        print(train_table)
-        print()
-        print(validation_table)
-        print()
-        # print(test_table)
-        with open("results.txt", "w") as f:
-            f.write(str(train_table) + "\n" + str(validation_table) + "\n" + str(test_table))
-
-        # visualise(model_file_path, "Embeddings")
 
 
 
@@ -125,26 +133,4 @@ def testWeightsFolder():
 
 if __name__ == '__main__':
 
-    # train_table = PrettyTable()
-    # train_table.field_names = ["Model", "Mean Reciprocal Rank", "Average Precision", "Recall By User"]
-    # validation_table = PrettyTable()
-    # validation_table.field_names = ["Model", "Mean Reciprocal Rank", "Average Precision", "Recall By User"]
-    #
-    # test_table = PrettyTable()
-    # test_table.field_names = ["Model", "Mean Reciprocal Rank", "Average Precision", "Recall By User"]
-    # model_file = "128_20_0.5_0.01_Apr27_15-59-56.pth"
-    # model_file_path = "WeightFiles/" + model_file
-    # train_row, val_row = test_model(model_file_path)
-    # train_table.add_row([model_file] + [str(r) for r in train_row])
-    # validation_table.add_row([model_file] + [str(r) for r in val_row])
-    # # test_table.add_row([model_file] + [str(r) for r in test_row])
-    # print(train_table)
-    # print()
-    # print(validation_table)
-    # print()
-    testWeightsFolder()
-    # print(test_table)
-    # with open("results.txt", "w") as f:
-    #     f.write(str(train_table) + "\n" + str(validation_table) + "\n" + str(test_table))
-
-    # visualise(model_file_path, "Embeddings")
+    pass

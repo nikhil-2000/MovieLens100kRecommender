@@ -2,7 +2,7 @@ import pandas as pd
 import random
 
 from prettytable import PrettyTable
-from tqdm import trange
+from tqdm import trange, tqdm
 
 from Datasets.Testing import TestDataset
 from Datasets.Training import TrainDataset
@@ -63,13 +63,18 @@ def test_model():
     for metric, data, name in params:
 
         print("\nTesting " + name)
-        for i in trange(tests):
-            # for i in range(tests):
-            # Pick Random User
-            total_interactions = 0
-            while total_interactions < 5:
+        if name == "Train":
+            users = []
+            while len(users) < 500:
                 user = data.sample_user()
-                user_interactions, total_interactions = user.interactions, len(user.interactions)
+                total_interactions = len(user.interactions)
+                if total_interactions > 5:
+                    users.append(user)
+        else:
+            users = data.users
+
+        for user in tqdm(users):
+            user_interactions, total_interactions = user.interactions, len(user.interactions)
             # Generate Anchor Positive
             a_idx, p_idx = random.sample(range(0, total_interactions), 2)
             anchor = user_interactions.iloc[a_idx]

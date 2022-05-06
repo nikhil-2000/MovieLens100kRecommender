@@ -65,8 +65,8 @@ class GCNDataset(DGLDataset):
         max_users = max(self.graph_user_ids) + 1
         max_movie = max(self.graph_movie_ids) + 1
 
-        self.movie_embedding = nn.Embedding(max_movie, 100)
-        self.user_embedding = nn.Embedding(max_users, 100)
+        self.movie_embedding = nn.Embedding(max_movie, 21)
+        self.user_embedding = nn.Embedding(max_users, 20)
 
         #Pinsage Sampler doesn't look at user nodes, only the other nearby movie nodes, therefore the user feature vectors aren't needed
         # self.graph.nodes["user"].data["features"] = self.user_vectors()

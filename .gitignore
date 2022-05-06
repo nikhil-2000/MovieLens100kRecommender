@@ -143,3 +143,11 @@ data/
 dgl-examples-pytorch-pinsage/
 
 dgl-examples-pytorch-pinsage.zip
+Models/URW_test_metric.pickle
+*.pickle
+Models/GCN_link_prediction/Examples/runs-old-eval/200_0.001_100_100_100Apr28_22-49-23_train/events.out.tfevents.1651182563.DESKTOP-020HG41.7976.156
+Models/GCN_link_prediction/Examples/runs-old-eval/200_0.001_100_100_100Apr28_22-49-23_val/events.out.tfevents.1651182563.DESKTOP-020HG41.7976.157
+Models/GCN_link_prediction/Examples/runs-old-eval/
+Models/GCN_link_prediction/OldRuns/
+dgl-itemrec-master.zip
+ml-1m.zip

@@ -69,8 +69,8 @@ class GraphSAGE(nn.Module):
         # self.conv1 = SAGEConv(in_feats, h_feats, 'mean')
         # self.conv2 = SAGEConv(h_feats, h_feats, 'mean')
         self.conv1 = dglnn.HeteroGraphConv({
-            "rating": dglnn.SAGEConv(in_feats,h_feats, 'mean')
-            ,"rated_by": dglnn.SAGEConv(in_feats,h_feats, 'mean')
+            "rating": dglnn.SAGEConv((20,21),h_feats, 'mean')
+            ,"rated_by": dglnn.SAGEConv((21,20),h_feats, 'mean')
         })
 
         self.conv2 = dglnn.HeteroGraphConv({

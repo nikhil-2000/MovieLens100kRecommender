@@ -1,7 +1,7 @@
 import random
 
 from prettytable import PrettyTable
-from tqdm import trange
+from tqdm import trange, tqdm
 
 from Datasets.Testing import TestDataset
 from Datasets.Training import TrainDataset
@@ -12,25 +12,19 @@ from helper_funcs import MRR, AveragePrecision, Recall
 
 
 def test_model(train_reader, test_reader, urw = None):
-    train_data = TrainDataset(train_reader.ratings_df, train_reader.user_df, train_reader.items_df)
 
-    if urw == None:
-        urw = UnweightedRandomWalk(train_data)
-
-    metric = URW_Metrics(train_data, urw)
 
     metrics = []
     datasets = []
+
+    # for reader in [train_reader, test_reader]:
+    data = TestDataset(test_reader.ratings_df, test_reader.user_df, test_reader.items_df)
+    metric = URW_Metrics(data, urw)
     metrics.append(metric)
-    datasets.append(train_data)
+    datasets.append(data)
 
-    for reader in [train_reader, test_reader]:
-        data = TestDataset(reader.ratings_df, reader.user_df, reader.items_df)
-        metric = URW_Metrics(data, urw)
-        metrics.append(metric)
-        datasets.append(data)
-
-    model_names = ["Train", "Test"]
+    # model_names = ["Train", "Test"]
+    model_names = ["Test"]
 
     params = zip(metrics, datasets, model_names)
 
@@ -44,13 +38,24 @@ def test_model(train_reader, test_reader, urw = None):
     for metric, data, name in params:
 
         print("\nTesting " + name)
-        for i in trange(tests):
+        if name == "Train" or name == "Validation":
+            users = []
+            while len(users) < tests:
+                user = data.sample_user()
+                total_interactions = len(user.interactions)
+                if total_interactions > 5:
+                    users.append(user)
+        else:
+            users = data.users
+
+        for user in tqdm(users):
             # for i in range(tests):
             # Pick Random User
-            total_interactions = 0
-            while total_interactions < 5:
-                user = data.sample_user()
-                user_interactions, total_interactions = user.interactions, len(user.interactions)
+            # total_interactions = 0
+            # while total_interactions < 5:
+            #     user = data.sample_user()
+            user_interactions, total_interactions = user.interactions, len(user.interactions)
+
             # Generate Anchor Positive
             a_idx, p_idx = random.sample(range(0, total_interactions), 2)
             anchor = user_interactions.iloc[a_idx]
@@ -79,15 +84,17 @@ def test_model(train_reader, test_reader, urw = None):
 
     return results
 
-
-if __name__ == '__main__':
-    train_reader = Datareader("ua.base", size=000, training_frac=1)
+def test_hyperparams():
+    train_reader = Datareader("ua.base", size=000, training_frac=1, val_frac=0.25)
     test_reader = Datareader("ua.test", training_frac=1)
 
     data = TrainDataset(train_reader.train, train_reader.user_df, train_reader.items_df)
     c = [5, 10, 20, 30, 40, 50, 75, 100]
     train_table = PrettyTable()
-    train_table.field_names = ["k","Mean Reciprocal Rank","Average Precision","Recall By User"]
+    train_table.field_names = ["k", "Mean Reciprocal Rank", "Average Precision", "Recall By User"]
+
+    validation_table = PrettyTable()
+    validation_table.field_names = ["k", "Mean Reciprocal Rank", "Average Precision", "Recall By User"]
 
     test_table = PrettyTable()
     test_table.field_names = ["k", "Mean Reciprocal Rank", "Average Precision", "Recall By User"]
@@ -95,11 +102,40 @@ if __name__ == '__main__':
 
     for n in c:
         urw.closest = n
-        train_row, test_row = test_model(train_reader, test_reader, urw)
-        train_table.add_row([urw.closest] + [str(r) for r in train_row])
-        test_table.add_row([urw.closest] + [str(r) for r in test_row])
-        print(train_table)
-        print()
-        print(test_table)
-        with open("results.txt", "w") as f:
-            f.write(str(train_table) + "\n" + str(test_table) + "\n")
+        # train_row, test_row = test_model(train_reader, urw)
+        validation_row = test_model(train_reader,test_reader, urw)[0]
+        validation_table.add_row([urw.closest] + [str(r) for r in validation_row])
+        # train_table.add_row([urw.closest] + [str(r) for r in train_row])
+        # test_table.add_row([urw.closest] + [str(r) for r in test_row])
+        # print(train_table)
+        # print()
+        # print(test_table)
+        with open("validation.txt", "w") as f:
+            f.write(str(validation_table))
+    # print(output)
+
+def test_main_model(closest = 10):
+    train_reader = Datareader("ua.base", size=000, training_frac=1, val_frac=0.25)
+    test_reader = Datareader("ua.test", training_frac=1)
+
+    data = TrainDataset(train_reader.train, train_reader.user_df, train_reader.items_df)
+    train_table = PrettyTable()
+    train_table.field_names = ["k", "Mean Reciprocal Rank", "Average Precision", "Recall By User"]
+
+    test_table = PrettyTable()
+    test_table.field_names = ["k", "Mean Reciprocal Rank", "Average Precision", "Recall By User"]
+    urw = UnweightedRandomWalk(data)
+
+    urw.closest = closest
+    test_row = test_model(train_reader, test_reader, urw)[0]
+    # train_table.add_row([urw.closest] + [str(r) for r in train_row])
+    test_table.add_row([urw.closest] + [str(r) for r in test_row])
+    print(train_table)
+    print()
+    print(test_table)
+    # with open("results.txt", "w") as f:
+    #     f.write(str(train_table) + "\n" + str(test_table) + "\n")
+
+
+if __name__ == '__main__':
+    test_main_model()
